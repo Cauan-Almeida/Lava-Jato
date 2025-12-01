@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lava Jato Control</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    @keyframes float {
+      0%, 100% { transform: translateY(0) translateX(0); opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      50% { transform: translateY(-100px) translateX(50px); }
+    }
+    .animate-float { animation: float 15s infinite; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+      20%, 40%, 60%, 80% { transform: translateX(5px); }
+    }
+    .animate-shake { animation: shake 0.5s ease-in-out; }
+  </style>
+
+  <script>
+    const __firebase_config = JSON.stringify({
+      apiKey: "AIzaSyDuxHvdJgeJOA1ZVD955WJiBQhU0Ano46Q",
+      authDomain: "lava-jato-1e944.firebaseapp.com",
+      projectId: "lava-jato-1e944",
+      storageBucket: "lava-jato-1e944.firebasestorage.app",
+      messagingSenderId: "734467998380",
+      appId: "1:734467998380:web:a2cc700d6805af99749509"
+    });
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    // Aguardar React e Lucide carregarem
+    window.addEventListener('load', () => {
+      const { useState, useEffect, useMemo, useRef, createElement: h } = React;
+      const { createRoot } = ReactDOM;
+      const icons = lucide;
+
+      // Configuração Firebase
+      const firebaseConfig = JSON.parse(__firebase_config);
+      const app = firebase.initializeApp(firebaseConfig);
+      const auth = firebase.auth();
+      const db = firebase.firestore();
+
+      // Constantes
+      const TIME_SLOTS = [
+        { id: 8, label: '08:00' }, { id: 9, label: '09:00' },
+        { id: 10, label: '10:00' }, { id: 11, label: '11:00' },
+        { id: 13, label: '13:00' }, { id: 14, label: '14:00' },
+        { id: 15, label: '15:00' }, { id: 16, label: '16:00' }
+      ];
+
+      const VEHICLE_TYPES = {
+        CARRO: { label: 'Carro Comum', slots: 1, icon: 'Car', defaultPrice: 50 },
+        RANGER: { label: 'Ranger / Picape', slots: 2, icon: 'Truck', defaultPrice: 80 },
+        VAN: { label: 'Van', slots: 2, icon: 'Truck', defaultPrice: 100 }
+      };
+
+      // Componente Principal
+      function LavaJatoApp() {
+        const [user, setUser] = useState(null);
+        const [appointments, setAppointments] = useState([]);
+        const [view, setView] = useState('schedule');
+        const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+        const [showModal, setShowModal] = useState(false);
+        const [loading, setLoading] = useState(true);
+
+        useEffect(() => {
+          const unsubscribe = auth.onAuthStateChanged((u) => {
+            setUser(u);
+            setLoading(false);
+          });
+          return () => unsubscribe();
+        }, []);
+
+        useEffect(() => {
+          if (!user) return;
+          const q = db.collection('appointments').where('userId', '==', user.uid);
+          const unsubscribe = q.onSnapshot((snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setAppointments(data);
+          });
+          return () => unsubscribe();
+        }, [user]);
+
+        const handleAddAppointment = async (formData) => {
+          if (!user) return;
+          try {
+            await db.collection('appointments').add({
+              ...formData,
+              userId: user.uid,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              status: 'agendado'
+            });
+            setShowModal(false);
+            alert('Agendamento criado com sucesso!');
+          } catch (e) {
+            alert("Erro: " + e.message);
+          }
+        };
+
+        const handleStatusChange = async (id, newStatus) => {
+          try {
+            await db.collection('appointments').doc(id).update({ status: newStatus });
+          } catch (e) {
+            console.error(e);
+          }
+        };
+
+        const handleDelete = async (id) => {
+          if (confirm('Tem certeza?')) {
+            try {
+              await db.collection('appointments').doc(id).delete();
+            } catch (e) {
+              console.error(e);
+            }
+          }
+        };
+
+        const handleLogout = async () => {
+          try {
+            await auth.signOut();
+          } catch (e) {
+            console.error(e);
+          }
+        };
+
+        if (loading) {
+          return h('div', { className: 'min-h-screen flex items-center justify-center bg-slate-100 text-slate-600' }, 'Carregando...');
+        }
+
+        if (!user) {
+          return h(LoginScreen);
+        }
+
+        return h('div', { className: 'min-h-screen bg-slate-50' },
+          h('header', { className: 'bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-900 text-white p-4 shadow-lg sticky top-0 z-10' },
+            h('div', { className: 'max-w-4xl mx-auto flex justify-between items-center' },
+              h('div', null,
+                h('h1', { className: 'text-xl font-bold flex items-center gap-2' },
+                  h('span', { className: 'text-2xl' }, '🚗'),
+                  'Lava Jato Control'
+                ),
+                h('p', { className: 'text-xs text-blue-200' }, user.email)
+              ),
+              h('div', { className: 'flex gap-2' },
+                h('button', {
+                  onClick: () => setShowModal(true),
+                  className: 'bg-blue-500 hover:bg-blue-400 text-white px-4 py-2 rounded-full shadow-md text-xl'
+                }, '+'),
+                h('button', {
+                  onClick: handleLogout,
+                  className: 'bg-red-500/80 hover:bg-red-500 text-white px-4 py-2 rounded-full shadow-md',
+                  title: 'Sair'
+                }, '↗')
+              )
+            )
+          ),
+          h('main', { className: 'max-w-4xl mx-auto p-4' },
+            h('div', { className: 'text-center py-12' },
+              h('h2', { className: 'text-2xl font-bold text-slate-800 mb-4' }, '🎉 Sistema Online!'),
+              h('p', { className: 'text-slate-600' }, 'Clique no botão + no topo para agendar uma lavagem'),
+              h('div', { className: 'mt-8 p-6 bg-white rounded-xl shadow-sm border border-slate-200' },
+                h('h3', { className: 'font-bold text-slate-700 mb-2' }, 'Seus Agendamentos'),
+                appointments.length === 0 ? 
+                  h('p', { className: 'text-slate-400' }, 'Nenhum agendamento ainda') :
+                  h('p', { className: 'text-slate-600' }, `${appointments.length} agendamento(s)`)
+              )
+            )
+          ),
+          showModal && h(NewAppointmentModal, {
+            onClose: () => setShowModal(false),
+            onSave: handleAddAppointment
+          })
+        );
+      }
+
+      // Modal de novo agendamento
+      function NewAppointmentModal({ onClose, onSave }) {
+        const [clientName, setClientName] = useState('');
+        const [vehicleType, setVehicleType] = useState('CARRO');
+        const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+        const [time, setTime] = useState('8');
+        const [price, setPrice] = useState('50');
+
+        const handleSubmit = (e) => {
+          e.preventDefault();
+          onSave({
+            clientName,
+            vehicleType,
+            date,
+            time: parseInt(time),
+            price: parseFloat(price),
+            frequency: 'unico'
+          });
+        };
+
+        return h('div', { 
+          className: 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4',
+          onClick: onClose
+        },
+          h('div', { 
+            className: 'bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl',
+            onClick: (e) => e.stopPropagation()
+          },
+            h('h3', { className: 'text-2xl font-bold text-slate-800 mb-6' }, '✨ Novo Agendamento'),
+            h('form', { onSubmit: handleSubmit, className: 'space-y-4' },
+              h('div', null,
+                h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Cliente'),
+                h('input', {
+                  type: 'text',
+                  required: true,
+                  value: clientName,
+                  onChange: (e) => setClientName(e.target.value),
+                  className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none',
+                  placeholder: 'Nome do cliente'
+                })
+              ),
+              h('div', null,
+                h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Tipo de Veículo'),
+                h('select', {
+                  value: vehicleType,
+                  onChange: (e) => setVehicleType(e.target.value),
+                  className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none'
+                },
+                  h('option', { value: 'CARRO' }, 'Carro Comum'),
+                  h('option', { value: 'RANGER' }, 'Ranger / Picape'),
+                  h('option', { value: 'VAN' }, 'Van')
+                )
+              ),
+              h('div', { className: 'grid grid-cols-2 gap-4' },
+                h('div', null,
+                  h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Data'),
+                  h('input', {
+                    type: 'date',
+                    required: true,
+                    value: date,
+                    onChange: (e) => setDate(e.target.value),
+                    className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none'
+                  })
+                ),
+                h('div', null,
+                  h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Horário'),
+                  h('select', {
+                    value: time,
+                    onChange: (e) => setTime(e.target.value),
+                    className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none'
+                  },
+                    ...TIME_SLOTS.map(slot => h('option', { key: slot.id, value: slot.id }, slot.label))
+                  )
+                )
+              ),
+              h('div', null,
+                h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Valor (R$)'),
+                h('input', {
+                  type: 'number',
+                  required: true,
+                  value: price,
+                  onChange: (e) => setPrice(e.target.value),
+                  className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none',
+                  min: '0',
+                  step: '0.01'
+                })
+              ),
+              h('div', { className: 'flex gap-3 mt-6' },
+                h('button', {
+                  type: 'button',
+                  onClick: onClose,
+                  className: 'flex-1 bg-slate-200 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-300'
+                }, 'Cancelar'),
+                h('button', {
+                  type: 'submit',
+                  className: 'flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700'
+                }, 'Agendar')
+              )
+            )
+          )
+        );
+      }
+
+      // Tela de Login
+      function LoginScreen() {
+        const [isLogin, setIsLogin] = useState(true);
+        const [email, setEmail] = useState('');
+        const [password, setPassword] = useState('');
+        const [error, setError] = useState('');
+        const [loading, setLoading] = useState(false);
+        const containerRef = useRef(null);
+        const [mousePos, setMousePos] = useState({ x: 50, y: 50 });
+
+        useEffect(() => {
+          const handleMouseMove = (e) => {
+            if (!containerRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            const x = ((e.clientX - rect.left) / rect.width) * 100;
+            const y = ((e.clientY - rect.top) / rect.height) * 100;
+            setMousePos({ x, y });
+          };
+          window.addEventListener('mousemove', handleMouseMove);
+          return () => window.removeEventListener('mousemove', handleMouseMove);
+        }, []);
+
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+          setError('');
+          setLoading(true);
+          try {
+            if (isLogin) {
+              await auth.signInWithEmailAndPassword(email, password);
+            } else {
+              await auth.createUserWithEmailAndPassword(email, password);
+            }
+          } catch (err) {
+            setError(err.message);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        const bgStyle = {
+          background: `radial-gradient(circle at ${mousePos.x}% ${mousePos.y}%, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%)`
+        };
+
+        return h('div', {
+          ref: containerRef,
+          className: 'min-h-screen flex items-center justify-center p-4 relative overflow-hidden',
+          style: bgStyle
+        },
+          // Brilho seguindo mouse
+          h('div', {
+            className: 'absolute w-96 h-96 rounded-full opacity-30 blur-3xl transition-all duration-300 pointer-events-none',
+            style: {
+              left: `${mousePos.x}%`,
+              top: `${mousePos.y}%`,
+              transform: 'translate(-50%, -50%)',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.8) 0%, transparent 70%)'
+            }
+          }),
+          // Card de login
+          h('div', { className: 'relative z-10 w-full max-w-md' },
+            h('div', { className: 'bg-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/20 p-8' },
+              h('div', { className: 'text-center mb-8' },
+                h('div', { className: 'inline-flex p-4 bg-white/20 rounded-full mb-4 backdrop-blur-sm' },
+                  h('span', { className: 'text-6xl' }, '🚗')
+                ),
+                h('h1', { className: 'text-3xl font-bold text-white mb-2 drop-shadow-lg' }, 'Lava Jato Control'),
+                h('p', { className: 'text-white/80 text-sm' }, isLogin ? 'Entre na sua conta' : 'Crie sua conta')
+              ),
+              h('form', { onSubmit: handleSubmit, className: 'space-y-5' },
+                error && h('div', { className: 'bg-red-500/20 border border-red-300/50 text-white text-sm p-3 rounded-xl animate-shake' }, error),
+                h('div', null,
+                  h('label', { className: 'block text-white/90 text-sm font-medium mb-2' }, 'Email'),
+                  h('input', {
+                    type: 'email',
+                    required: true,
+                    value: email,
+                    onChange: (e) => setEmail(e.target.value),
+                    className: 'w-full px-4 py-3 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50',
+                    placeholder: 'seu@email.com'
+                  })
+                ),
+                h('div', null,
+                  h('label', { className: 'block text-white/90 text-sm font-medium mb-2' }, 'Senha'),
+                  h('input', {
+                    type: 'password',
+                    required: true,
+                    value: password,
+                    onChange: (e) => setPassword(e.target.value),
+                    className: 'w-full px-4 py-3 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50',
+                    placeholder: '••••••••'
+                  })
+                ),
+                h('button', {
+                  type: 'submit',
+                  disabled: loading,
+                  className: 'w-full bg-white text-purple-600 font-bold py-3 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] transition-all'
+                }, loading ? 'Processando...' : (isLogin ? 'Entrar' : 'Criar Conta')),
+                h('div', { className: 'text-center' },
+                  h('button', {
+                    type: 'button',
+                    onClick: () => { setIsLogin(!isLogin); setError(''); },
+                    className: 'text-white/90 text-sm hover:text-white underline'
+                  }, isLogin ? 'Não tem conta? Registre-se' : 'Já tem conta? Entrar')
+                )
+              )
+            )
+          )
+        );
+      }
+
+      // Renderizar
+      const root = createRoot(document.getElementById('root'));
+      root.render(h(LavaJatoApp));
+    });
+  </script>
+</body>
+</html>

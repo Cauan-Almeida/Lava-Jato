@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lava Jato Control - Sistema Completo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    @keyframes float { 0%, 100% { transform: translateY(0) translateX(0); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 50% { transform: translateY(-100px) translateX(50px); } }
+    .animate-float { animation: float 15s infinite; }
+    @keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); } 20%, 40%, 60%, 80% { transform: translateX(5px); } }
+    .animate-shake { animation: shake 0.5s ease-in-out; }
+    .calendar-day { transition: all 0.2s; }
+    .calendar-day:hover { transform: scale(1.05); }
+    .has-appointments { position: relative; }
+    .has-appointments::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; background: #3b82f6; border-radius: 50%; }
+  </style>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDuxHvdJgeJOA1ZVD955WJiBQhU0Ano46Q",
+      authDomain: "lava-jato-1e944.firebaseapp.com",
+      projectId: "lava-jato-1e944",
+      storageBucket: "lava-jato-1e944.firebasestorage.app",
+      messagingSenderId: "734467998380",
+      appId: "1:734467998380:web:a2cc700d6805af99749509"
+    };
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    // Aguardar carregamento
+    window.addEventListener('load', () => {
+      const { useState, useEffect, useMemo, useRef, createElement: h } = React;
+      const { createRoot } = ReactDOM;
+
+      // Firebase
+      const app = firebase.initializeApp(firebaseConfig);
+      const auth = firebase.auth();
+      const db = firebase.firestore();
+
+      // Constantes
+      const TIME_SLOTS = [
+        { id: 8, label: '08:00' }, { id: 9, label: '09:00' },
+        { id: 10, label: '10:00' }, { id: 11, label: '11:00' },
+        { id: 13, label: '13:00' }, { id: 14, label: '14:00' },
+        { id: 15, label: '15:00' }, { id: 16, label: '16:00' }
+      ];
+
+      const VEHICLE_TYPES = {
+        CARRO: { label: 'Carro Comum', slots: 1, defaultPrice: 50 },
+        RANGER: { label: 'Ranger / Picape', slots: 2, defaultPrice: 80 },
+        VAN: { label: 'Van', slots: 2, defaultPrice: 100 }
+      };
+
+      // Componente Principal
+      function LavaJatoApp() {
+        const [user, setUser] = useState(null);
+        const [appointments, setAppointments] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [view, setView] = useState('calendar'); // 'calendar', 'history', 'stats'
+        const [showModal, setShowModal] = useState(false);
+        const [selectedDateForModal, setSelectedDateForModal] = useState(null);
+        const [selectedTimeForModal, setSelectedTimeForModal] = useState(null);
+
+        useEffect(() => {
+          const unsubscribe = auth.onAuthStateChanged((u) => {
+            setUser(u);
+            setLoading(false);
+          });
+          return () => unsubscribe();
+        }, []);
+
+        useEffect(() => {
+          if (!user) return;
+          const q = db.collection('appointments').where('userId', '==', user.uid);
+          const unsubscribe = q.onSnapshot((snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setAppointments(data);
+          });
+          return () => unsubscribe();
+        }, [user]);
+
+        const handleAddAppointment = async (formData) => {
+          if (!user) return;
+          try {
+            await db.collection('appointments').add({
+              ...formData,
+              userId: user.uid,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              status: 'agendado'
+            });
+            setShowModal(false);
+            setSelectedDateForModal(null);
+            setSelectedTimeForModal(null);
+          } catch (e) {
+            alert("Erro: " + e.message);
+          }
+        };
+
+        const handleTimeSlotClick = (date, time) => {
+          setSelectedDateForModal(date);
+          setSelectedTimeForModal(time);
+          setShowModal(true);
+        };
+
+        const handleLogout = async () => {
+          try {
+            await auth.signOut();
+          } catch (e) {
+            console.error(e);
+          }
+        };
+
+        if (loading) {
+          return h('div', { className: 'min-h-screen flex items-center justify-center bg-slate-100 text-slate-600' }, 'Carregando...');
+        }
+
+        if (!user) {
+          return h(LoginScreen);
+        }
+
+        return h('div', { className: 'min-h-screen bg-slate-50' },
+          h('header', { className: 'bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-900 text-white p-4 shadow-lg sticky top-0 z-10' },
+            h('div', { className: 'max-w-7xl mx-auto flex justify-between items-center' },
+              h('div', null,
+                h('h1', { className: 'text-xl font-bold flex items-center gap-2' },
+                  h('span', { className: 'text-2xl' }, '🚗'),
+                  'Lava Jato Control'
+                ),
+                h('p', { className: 'text-xs text-blue-200' }, user.email)
+              ),
+              h('div', { className: 'flex gap-2' },
+                h('button', {
+                  onClick: () => { setSelectedDateForModal(null); setSelectedTimeForModal(null); setShowModal(true); },
+                  className: 'bg-blue-500 hover:bg-blue-400 text-white px-4 py-2 rounded-full shadow-md font-bold'
+                }, '+ Novo'),
+                h('button', {
+                  onClick: handleLogout,
+                  className: 'bg-red-500/80 hover:bg-red-500 text-white px-4 py-2 rounded-full shadow-md',
+                  title: 'Sair'
+                }, 'Sair')
+              )
+            )
+          ),
+          h('main', { className: 'max-w-7xl mx-auto p-4' },
+            // Navegação por abas
+            h('div', { className: 'flex gap-2 mb-6 bg-white p-1 rounded-xl shadow-sm border border-slate-200' },
+              h('button', {
+                onClick: () => setView('calendar'),
+                className: `flex-1 py-3 rounded-lg text-sm font-bold transition-colors ${view === 'calendar' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`
+              }, '📅 Calendário'),
+              h('button', {
+                onClick: () => setView('history'),
+                className: `flex-1 py-3 rounded-lg text-sm font-bold transition-colors ${view === 'history' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`
+              }, '📋 Histórico'),
+              h('button', {
+                onClick: () => setView('stats'),
+                className: `flex-1 py-3 rounded-lg text-sm font-bold transition-colors ${view === 'stats' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`
+              }, '💰 Finanças')
+            ),
+            
+            view === 'calendar' && h(CalendarView, {
+              appointments,
+              onTimeSlotClick: handleTimeSlotClick
+            }),
+            
+            view === 'history' && h(HistoryView, { appointments, db }),
+            
+            view === 'stats' && h(StatsView, { appointments })
+          ),
+          showModal && h(NewAppointmentModal, {
+            onClose: () => { setShowModal(false); setSelectedDateForModal(null); setSelectedTimeForModal(null); },
+            onSave: handleAddAppointment,
+            preSelectedDate: selectedDateForModal,
+            preSelectedTime: selectedTimeForModal
+          })
+        );
+      }
+
+      // Calendário Mensal
+      function CalendarView({ appointments, onTimeSlotClick }) {
+        const [currentMonth, setCurrentMonth] = useState(new Date());
+        const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
+        const getDaysInMonth = (date) => {
+          const year = date.getFullYear();
+          const month = date.getMonth();
+          const firstDay = new Date(year, month, 1);
+          const lastDay = new Date(year, month + 1, 0);
+          const daysInMonth = lastDay.getDate();
+          const startDayOfWeek = firstDay.getDay();
+          
+          const days = [];
+          for (let i = 0; i < startDayOfWeek; i++) {
+            days.push(null);
+          }
+          for (let day = 1; day <= daysInMonth; day++) {
+            days.push(new Date(year, month, day));
+          }
+          return days;
+        };
+
+        const changeMonth = (delta) => {
+          const newMonth = new Date(currentMonth);
+          newMonth.setMonth(newMonth.getMonth() + delta);
+          setCurrentMonth(newMonth);
+        };
+
+        const formatMonthYear = (date) => {
+          return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+        };
+
+        const getAppointmentsForDate = (dateStr) => {
+          return appointments.filter(a => a.date === dateStr && a.status !== 'cancelado');
+        };
+
+        const days = getDaysInMonth(currentMonth);
+        const today = new Date().toISOString().split('T')[0];
+        const dailyApps = getAppointmentsForDate(selectedDate);
+
+        return h('div', { className: 'space-y-6' },
+          // Calendário Mensal
+          h('div', { className: 'bg-white rounded-xl shadow-lg border border-slate-200 p-6' },
+            h('div', { className: 'flex justify-between items-center mb-6' },
+              h('button', {
+                onClick: () => changeMonth(-1),
+                className: 'p-3 hover:bg-slate-100 rounded-full text-2xl font-bold text-slate-600'
+              }, '←'),
+              h('h2', { className: 'text-2xl font-bold text-slate-800 capitalize' }, formatMonthYear(currentMonth)),
+              h('button', {
+                onClick: () => changeMonth(1),
+                className: 'p-3 hover:bg-slate-100 rounded-full text-2xl font-bold text-slate-600'
+              }, '→')
+            ),
+            h('div', { className: 'grid grid-cols-7 gap-2' },
+              ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day =>
+                h('div', { key: day, className: 'text-center text-sm font-bold text-slate-600 py-2' }, day)
+              ),
+              ...days.map((day, index) => {
+                if (!day) return h('div', { key: `empty-${index}` });
+                const dateStr = day.toISOString().split('T')[0];
+                const hasApps = getAppointmentsForDate(dateStr).length > 0;
+                const isSelected = dateStr === selectedDate;
+                const isToday = dateStr === today;
+                
+                return h('button', {
+                  key: dateStr,
+                  onClick: () => setSelectedDate(dateStr),
+                  className: `calendar-day p-3 rounded-lg text-center ${isSelected ? 'bg-blue-600 text-white font-bold' : isToday ? 'bg-blue-100 text-blue-900 font-bold' : 'hover:bg-slate-100'} ${hasApps ? 'has-appointments' : ''}`
+                }, day.getDate());
+              })
+            )
+          ),
+
+          // Grade de Horários do Dia Selecionado
+          h('div', { className: 'bg-white rounded-xl shadow-lg border border-slate-200 p-6' },
+            h('h3', { className: 'text-xl font-bold text-slate-800 mb-4' }, 
+              `Agenda de ${new Date(selectedDate + 'T00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}`
+            ),
+            h('div', { className: 'text-sm text-slate-500 mb-4' }, 
+              `${dailyApps.length} agendamento(s) • Clique em um horário vazio para agendar`
+            ),
+            h('div', { className: 'grid gap-3' },
+              TIME_SLOTS.map(slot => {
+                const appHere = dailyApps.find(a => parseInt(a.time) === slot.id);
+                const blockedByPrevious = dailyApps.find(a => {
+                  const vehicle = VEHICLE_TYPES[a.vehicleType];
+                  return vehicle.slots > 1 && parseInt(a.time) === (slot.id - 1);
+                });
+
+                if (blockedByPrevious) return null;
+
+                return h('div', { key: slot.id, className: 'flex gap-4' },
+                  h('div', { className: 'w-20 flex-shrink-0 flex items-center justify-center' },
+                    h('span', { className: 'text-lg font-bold text-slate-700' }, slot.label)
+                  ),
+                  appHere ? h(AppointmentCard, { appointment: appHere }) :
+                    h('button', {
+                      onClick: () => onTimeSlotClick(selectedDate, slot.id),
+                      className: 'flex-1 min-h-[4rem] border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 transition-all'
+                    }, '+ Clique para agendar')
+                );
+              })
+            )
+          )
+        );
+      }
+
+      // Card de Agendamento
+      function AppointmentCard({ appointment }) {
+        const vehicle = VEHICLE_TYPES[appointment.vehicleType];
+        const isLarge = vehicle?.slots > 1;
+
+        return h('div', {
+          className: `flex-1 p-4 rounded-xl border-l-4 shadow-sm ${isLarge ? 'border-l-orange-500 bg-orange-50' : 'border-l-blue-500 bg-blue-50'}`
+        },
+          h('div', { className: 'flex justify-between' },
+            h('div', null,
+              h('h4', { className: 'font-bold text-slate-800' }, appointment.clientName),
+              appointment.plate && h('div', { className: 'text-xs font-mono bg-slate-800 text-white px-2 py-0.5 rounded mt-1 inline-block' }, appointment.plate),
+              appointment.model && h('div', { className: 'text-xs text-slate-600 mt-1' }, appointment.model),
+              h('div', { className: 'text-xs text-slate-500 mt-1' }, 
+                `${vehicle?.label} • R$ ${appointment.price}`
+              ),
+              appointment.frequency === 'semanal' && h('span', { className: 'text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded mt-1 inline-block font-bold' }, '📅 SEMANAL')
+            ),
+            h('div', { className: 'flex flex-col gap-2' },
+              appointment.status === 'agendado' && h('button', {
+                onClick: async () => {
+                  await db.collection('appointments').doc(appointment.id).update({ status: 'concluido' });
+                },
+                className: 'p-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg'
+              }, '✓'),
+              h('button', {
+                onClick: async () => {
+                  if (confirm('Deletar este agendamento?')) {
+                    await db.collection('appointments').doc(appointment.id).delete();
+                  }
+                },
+                className: 'p-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg'
+              }, '🗑')
+            )
+          )
+        );
+      }
+
+      // Modal de Novo Agendamento
+      function NewAppointmentModal({ onClose, onSave, preSelectedDate, preSelectedTime }) {
+        const [clientName, setClientName] = useState('');
+        const [plate, setPlate] = useState('');
+        const [model, setModel] = useState('');
+        const [vehicleType, setVehicleType] = useState('CARRO');
+        const [date, setDate] = useState(preSelectedDate || new Date().toISOString().split('T')[0]);
+        const [time, setTime] = useState(preSelectedTime ? String(preSelectedTime) : '8');
+        const [frequency, setFrequency] = useState('unico');
+        const [price, setPrice] = useState('50');
+
+        useEffect(() => {
+          setPrice(String(VEHICLE_TYPES[vehicleType].defaultPrice));
+        }, [vehicleType]);
+
+        const handleSubmit = (e) => {
+          e.preventDefault();
+          onSave({ clientName, plate, model, vehicleType, date, time: parseInt(time), frequency, price: parseFloat(price) });
+        };
+
+        return h('div', {
+          className: 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4',
+          onClick: onClose
+        },
+          h('div', {
+            className: 'bg-white rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto',
+            onClick: (e) => e.stopPropagation()
+          },
+            h('div', { className: 'flex justify-between items-center mb-6' },
+              h('h3', { className: 'text-2xl font-bold text-slate-800' }, '✨ Novo Agendamento'),
+              h('button', { onClick: onClose, className: 'text-slate-400 hover:text-slate-600 text-2xl' }, '×')
+            ),
+            h('form', { onSubmit: handleSubmit, className: 'space-y-4' },
+              h('div', { className: 'grid md:grid-cols-2 gap-4' },
+                h('div', null,
+                  h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Cliente *'),
+                  h('input', {
+                    type: 'text',
+                    required: true,
+                    value: clientName,
+                    onChange: (e) => setClientName(e.target.value),
+                    className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none',
+                    placeholder: 'Nome do cliente',
+                    autoFocus: true
+                  })
+                ),
+                h('div', null,
+                  h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Placa (Recomendado)'),
+                  h('input', {
+                    type: 'text',
+                    value: plate,
+                    onChange: (e) => setPlate(e.target.value.toUpperCase()),
+                    className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono',
+                    placeholder: 'ABC-1234',
+                    maxLength: 8
+                  })
+                )
+              ),
+              h('div', null,
+                h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Modelo do Veículo'),
+                h('input', {
+                  type: 'text',
+                  value: model,
+                  onChange: (e) => setModel(e.target.value),
+                  className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none',
+                  placeholder: 'Ex: Fiat Uno, Honda Civic'
+                })
+              ),
+              h('div', { className: 'grid md:grid-cols-3 gap-4' },
+                h('div', null,
+                  h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Tipo *'),
+                  h('select', {
+                    value: vehicleType,
+                    onChange: (e) => setVehicleType(e.target.value),
+                    className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none'
+                  },
+                    Object.entries(VEHICLE_TYPES).map(([key, val]) =>
+                      h('option', { key, value: key }, val.label)
+                    )
+                  )
+                ),
+                h('div', null,
+                  h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Frequência'),
+                  h('select', {
+                    value: frequency,
+                    onChange: (e) => setFrequency(e.target.value),
+                    className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none'
+                  },
+                    h('option', { value: 'unico' }, 'Uma vez'),
+                    h('option', { value: 'semanal' }, '📅 Semanal')
+                  )
+                ),
+                h('div', null,
+                  h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Valor (R$) *'),
+                  h('input', {
+                    type: 'number',
+                    required: true,
+                    value: price,
+                    onChange: (e) => setPrice(e.target.value),
+                    className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none',
+                    min: '0',
+                    step: '0.01'
+                  })
+                )
+              ),
+              h('div', { className: 'grid md:grid-cols-2 gap-4' },
+                h('div', null,
+                  h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Data *'),
+                  h('input', {
+                    type: 'date',
+                    required: true,
+                    value: date,
+                    onChange: (e) => setDate(e.target.value),
+                    className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none'
+                  })
+                ),
+                h('div', null,
+                  h('label', { className: 'block text-sm font-medium text-slate-700 mb-1' }, 'Horário *'),
+                  h('select', {
+                    required: true,
+                    value: time,
+                    onChange: (e) => setTime(e.target.value),
+                    className: 'w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none'
+                  },
+                    TIME_SLOTS.map(slot => h('option', { key: slot.id, value: slot.id }, slot.label))
+                  )
+                )
+              ),
+              VEHICLE_TYPES[vehicleType].slots > 1 && h('div', {
+                className: 'bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-700'
+              }, '⚠️ Este veículo ocupará 2 horários consecutivos'),
+              h('div', { className: 'flex gap-3 pt-4' },
+                h('button', {
+                  type: 'button',
+                  onClick: onClose,
+                  className: 'flex-1 bg-slate-200 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-300 transition-colors'
+                }, 'Cancelar'),
+                h('button', {
+                  type: 'submit',
+                  className: 'flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg'
+                }, '✓ Agendar')
+              )
+            )
+          )
+        );
+      }
+
+      // View de Histórico
+      function HistoryView({ appointments, db }) {
+        const [filter, setFilter] = useState('');
+
+        const sortedApps = useMemo(() => {
+          return [...appointments]
+            .sort((a, b) => {
+              const dateA = new Date(a.date + 'T' + String(a.time).padStart(2, '0') + ':00');
+              const dateB = new Date(b.date + 'T' + String(b.time).padStart(2, '0') + ':00');
+              return dateB - dateA;
+            })
+            .filter(a => 
+              a.clientName.toLowerCase().includes(filter.toLowerCase()) ||
+              (a.plate && a.plate.toLowerCase().includes(filter.toLowerCase())) ||
+              (a.model && a.model.toLowerCase().includes(filter.toLowerCase())) ||
+              a.date.includes(filter)
+            );
+        }, [appointments, filter]);
+
+        return h('div', { className: 'space-y-4' },
+          // Busca
+          h('div', { className: 'bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex gap-3' },
+            h('span', { className: 'text-2xl' }, '🔍'),
+            h('input', {
+              type: 'text',
+              placeholder: 'Buscar por cliente, placa, modelo ou data...',
+              className: 'flex-1 outline-none text-slate-700',
+              value: filter,
+              onChange: (e) => setFilter(e.target.value)
+            })
+          ),
+
+          // Estatísticas rápidas
+          h('div', { className: 'grid grid-cols-3 gap-4' },
+            h('div', { className: 'bg-blue-50 border border-blue-200 rounded-xl p-4 text-center' },
+              h('div', { className: 'text-3xl font-bold text-blue-600' }, appointments.length),
+              h('div', { className: 'text-xs text-blue-700 mt-1' }, 'Total de Registros')
+            ),
+            h('div', { className: 'bg-green-50 border border-green-200 rounded-xl p-4 text-center' },
+              h('div', { className: 'text-3xl font-bold text-green-600' }, appointments.filter(a => a.status === 'concluido').length),
+              h('div', { className: 'text-xs text-green-700 mt-1' }, 'Concluídos')
+            ),
+            h('div', { className: 'bg-orange-50 border border-orange-200 rounded-xl p-4 text-center' },
+              h('div', { className: 'text-3xl font-bold text-orange-600' }, appointments.filter(a => a.status === 'agendado').length),
+              h('div', { className: 'text-xs text-orange-700 mt-1' }, 'Agendados')
+            )
+          ),
+
+          // Lista
+          h('div', { className: 'bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden' },
+            h('div', { className: 'overflow-x-auto' },
+              h('table', { className: 'w-full text-sm' },
+                h('thead', { className: 'bg-slate-50 border-b border-slate-200' },
+                  h('tr', null,
+                    h('th', { className: 'text-left p-3 font-bold text-slate-700' }, 'Data/Hora'),
+                    h('th', { className: 'text-left p-3 font-bold text-slate-700' }, 'Cliente/Veículo'),
+                    h('th', { className: 'text-right p-3 font-bold text-slate-700' }, 'Valor'),
+                    h('th', { className: 'text-center p-3 font-bold text-slate-700' }, 'Status'),
+                    h('th', { className: 'text-center p-3 font-bold text-slate-700' }, 'Ações')
+                  )
+                ),
+                h('tbody', { className: 'divide-y divide-slate-100' },
+                  sortedApps.length === 0 ? 
+                    h('tr', null,
+                      h('td', { colSpan: 5, className: 'p-8 text-center text-slate-400' }, 
+                        filter ? 'Nenhum resultado encontrado' : 'Nenhum agendamento ainda'
+                      )
+                    ) :
+                    sortedApps.map(app => {
+                      const vehicle = VEHICLE_TYPES[app.vehicleType];
+                      return h('tr', { key: app.id, className: 'hover:bg-slate-50' },
+                        h('td', { className: 'p-3' },
+                          h('div', { className: 'font-bold text-slate-800' }, 
+                            new Date(app.date).toLocaleDateString('pt-BR')
+                          ),
+                          h('div', { className: 'text-xs text-slate-500' }, `${app.time}:00`)
+                        ),
+                        h('td', { className: 'p-3' },
+                          h('div', { className: 'font-bold text-slate-800' }, app.clientName),
+                          app.plate && h('div', { className: 'text-xs font-mono bg-slate-800 text-white px-2 py-0.5 rounded mt-1 inline-block' }, app.plate),
+                          app.model && h('div', { className: 'text-xs text-slate-600 mt-1' }, app.model),
+                          h('div', { className: 'text-[10px] text-slate-400 mt-1' }, vehicle?.label),
+                          app.frequency === 'semanal' && h('span', { className: 'text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded ml-2 font-bold' }, '📅 SEMANAL')
+                        ),
+                        h('td', { className: 'p-3 text-right font-bold text-slate-700' }, `R$ ${app.price}`),
+                        h('td', { className: 'p-3 text-center' },
+                          h('span', {
+                            className: `px-3 py-1 rounded-full text-xs font-bold ${
+                              app.status === 'concluido' ? 'bg-green-100 text-green-700' :
+                              app.status === 'agendado' ? 'bg-blue-100 text-blue-700' :
+                              'bg-red-100 text-red-700'
+                            }`
+                          }, app.status.toUpperCase())
+                        ),
+                        h('td', { className: 'p-3 text-center' },
+                          h('div', { className: 'flex gap-2 justify-center' },
+                            app.status === 'agendado' && h('button', {
+                              onClick: async () => {
+                                await db.collection('appointments').doc(app.id).update({ status: 'concluido' });
+                              },
+                              className: 'px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-sm font-bold',
+                              title: 'Marcar como concluído'
+                            }, '✓'),
+                            h('button', {
+                              onClick: async () => {
+                                if (confirm('Deletar este agendamento?')) {
+                                  await db.collection('appointments').doc(app.id).delete();
+                                }
+                              },
+                              className: 'px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-sm font-bold',
+                              title: 'Deletar'
+                            }, '🗑')
+                          )
+                        )
+                      );
+                    })
+                )
+              )
+            )
+          )
+        );
+      }
+
+      // View de Estatísticas/Finanças
+      function StatsView({ appointments }) {
+        const stats = useMemo(() => {
+          const done = appointments.filter(a => a.status === 'concluido');
+          const totalRevenue = done.reduce((acc, curr) => acc + Number(curr.price || 0), 0);
+          
+          // Por tipo de veículo
+          const byVehicle = done.reduce((acc, curr) => {
+            acc[curr.vehicleType] = (acc[curr.vehicleType] || 0) + 1;
+            return acc;
+          }, {});
+
+          // Este mês
+          const now = new Date();
+          const thisMonth = done.filter(a => {
+            const d = new Date(a.date);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+          });
+          const monthRevenue = thisMonth.reduce((acc, curr) => acc + Number(curr.price || 0), 0);
+
+          // Clientes semanais
+          const weeklyClients = appointments.filter(a => a.frequency === 'semanal').length;
+
+          return { 
+            totalRevenue, 
+            totalCount: done.length, 
+            byVehicle, 
+            monthRevenue, 
+            monthCount: thisMonth.length,
+            weeklyClients
+          };
+        }, [appointments]);
+
+        return h('div', { className: 'space-y-6' },
+          // Cards de Resumo
+          h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4' },
+            h('div', { className: 'bg-gradient-to-br from-green-500 to-emerald-600 p-6 rounded-xl text-white shadow-lg' },
+              h('div', { className: 'text-sm opacity-90 mb-2' }, '💰 Faturamento do Mês'),
+              h('div', { className: 'text-3xl font-bold' }, `R$ ${stats.monthRevenue.toFixed(2)}`),
+              h('div', { className: 'text-xs opacity-80 mt-2' }, `${stats.monthCount} lavagens`)
+            ),
+            h('div', { className: 'bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-xl text-white shadow-lg' },
+              h('div', { className: 'text-sm opacity-90 mb-2' }, '📊 Total Histórico'),
+              h('div', { className: 'text-3xl font-bold' }, `R$ ${stats.totalRevenue.toFixed(2)}`),
+              h('div', { className: 'text-xs opacity-80 mt-2' }, `${stats.totalCount} lavagens concluídas`)
+            ),
+            h('div', { className: 'bg-gradient-to-br from-purple-500 to-purple-600 p-6 rounded-xl text-white shadow-lg' },
+              h('div', { className: 'text-sm opacity-90 mb-2' }, '📅 Clientes Semanais'),
+              h('div', { className: 'text-3xl font-bold' }, stats.weeklyClients),
+              h('div', { className: 'text-xs opacity-80 mt-2' }, 'clientes fixos')
+            ),
+            h('div', { className: 'bg-gradient-to-br from-orange-500 to-orange-600 p-6 rounded-xl text-white shadow-lg' },
+              h('div', { className: 'text-sm opacity-90 mb-2' }, '⏳ Agendados'),
+              h('div', { className: 'text-3xl font-bold' }, appointments.filter(a => a.status === 'agendado').length),
+              h('div', { className: 'text-xs opacity-80 mt-2' }, 'aguardando atendimento')
+            )
+          ),
+
+          // Gráfico de Veículos
+          h('div', { className: 'bg-white p-6 rounded-xl shadow-lg border border-slate-200' },
+            h('h3', { className: 'text-xl font-bold text-slate-800 mb-6 flex items-center gap-2' },
+              h('span', null, '🚗'),
+              'Lavagens por Tipo de Veículo'
+            ),
+            h('div', { className: 'space-y-4' },
+              Object.entries(VEHICLE_TYPES).map(([type, config]) => {
+                const count = stats.byVehicle[type] || 0;
+                const percentage = stats.totalCount ? (count / stats.totalCount) * 100 : 0;
+                return h('div', { key: type },
+                  h('div', { className: 'flex justify-between text-sm mb-2' },
+                    h('span', { className: 'font-medium text-slate-700' }, config.label),
+                    h('span', { className: 'font-bold text-slate-900' }, `${count} (${percentage.toFixed(0)}%)`)
+                  ),
+                  h('div', { className: 'h-3 bg-slate-100 rounded-full overflow-hidden' },
+                    h('div', {
+                      className: 'h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500',
+                      style: { width: `${percentage}%` }
+                    })
+                  )
+                );
+              })
+            )
+          ),
+
+          // Média de Valor
+          h('div', { className: 'bg-white p-6 rounded-xl shadow-lg border border-slate-200' },
+            h('h3', { className: 'text-xl font-bold text-slate-800 mb-4' }, '💵 Análise de Valores'),
+            h('div', { className: 'grid grid-cols-3 gap-4' },
+              h('div', { className: 'text-center' },
+                h('div', { className: 'text-2xl font-bold text-blue-600' }, 
+                  `R$ ${stats.totalCount ? (stats.totalRevenue / stats.totalCount).toFixed(2) : '0.00'}`
+                ),
+                h('div', { className: 'text-xs text-slate-600 mt-1' }, 'Ticket Médio')
+              ),
+              h('div', { className: 'text-center' },
+                h('div', { className: 'text-2xl font-bold text-green-600' }, 
+                  `R$ ${Math.max(...appointments.filter(a => a.status === 'concluido').map(a => a.price || 0), 0)}`
+                ),
+                h('div', { className: 'text-xs text-slate-600 mt-1' }, 'Maior Valor')
+              ),
+              h('div', { className: 'text-center' },
+                h('div', { className: 'text-2xl font-bold text-orange-600' }, 
+                  `R$ ${Math.min(...appointments.filter(a => a.status === 'concluido').map(a => a.price || 0), Infinity) || 0}`
+                ),
+                h('div', { className: 'text-xs text-slate-600 mt-1' }, 'Menor Valor')
+              )
+            )
+          )
+        );
+      }
+
+      // Tela de Login
+      function LoginScreen() {
+        const [isLogin, setIsLogin] = useState(true);
+        const [email, setEmail] = useState('');
+        const [password, setPassword] = useState('');
+        const [error, setError] = useState('');
+        const [loading, setLoading] = useState(false);
+        const containerRef = useRef(null);
+        const [mousePos, setMousePos] = useState({ x: 50, y: 50 });
+
+        useEffect(() => {
+          const handleMouseMove = (e) => {
+            if (!containerRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            const x = ((e.clientX - rect.left) / rect.width) * 100;
+            const y = ((e.clientY - rect.top) / rect.height) * 100;
+            setMousePos({ x, y });
+          };
+          window.addEventListener('mousemove', handleMouseMove);
+          return () => window.removeEventListener('mousemove', handleMouseMove);
+        }, []);
+
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+          setError('');
+          setLoading(true);
+          try {
+            if (isLogin) {
+              await auth.signInWithEmailAndPassword(email, password);
+            } else {
+              await auth.createUserWithEmailAndPassword(email, password);
+            }
+          } catch (err) {
+            setError(err.message);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        const bgStyle = {
+          background: `radial-gradient(circle at ${mousePos.x}% ${mousePos.y}%, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%)`
+        };
+
+        return h('div', {
+          ref: containerRef,
+          className: 'min-h-screen flex items-center justify-center p-4 relative overflow-hidden',
+          style: bgStyle
+        },
+          h('div', {
+            className: 'absolute w-96 h-96 rounded-full opacity-30 blur-3xl transition-all duration-300 pointer-events-none',
+            style: {
+              left: `${mousePos.x}%`,
+              top: `${mousePos.y}%`,
+              transform: 'translate(-50%, -50%)',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.8) 0%, transparent 70%)'
+            }
+          }),
+          h('div', { className: 'relative z-10 w-full max-w-md' },
+            h('div', { className: 'bg-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/20 p-8' },
+              h('div', { className: 'text-center mb-8' },
+                h('div', { className: 'inline-flex p-4 bg-white/20 rounded-full mb-4' },
+                  h('span', { className: 'text-6xl' }, '🚗')
+                ),
+                h('h1', { className: 'text-3xl font-bold text-white mb-2 drop-shadow-lg' }, 'Lava Jato Control'),
+                h('p', { className: 'text-white/80 text-sm' }, isLogin ? 'Entre na sua conta' : 'Crie sua conta')
+              ),
+              h('form', { onSubmit: handleSubmit, className: 'space-y-4' },
+                error && h('div', { className: 'bg-red-500/20 border border-red-300/50 text-white text-sm p-3 rounded-xl animate-shake' }, error),
+                h('input', {
+                  type: 'email',
+                  required: true,
+                  value: email,
+                  onChange: (e) => setEmail(e.target.value),
+                  className: 'w-full px-4 py-3 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50',
+                  placeholder: 'Email'
+                }),
+                h('input', {
+                  type: 'password',
+                  required: true,
+                  value: password,
+                  onChange: (e) => setPassword(e.target.value),
+                  className: 'w-full px-4 py-3 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50',
+                  placeholder: 'Senha (min 6 caracteres)'
+                }),
+                h('button', {
+                  type: 'submit',
+                  disabled: loading,
+                  className: 'w-full bg-white text-purple-600 font-bold py-3 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] transition-all'
+                }, loading ? 'Processando...' : (isLogin ? 'Entrar' : 'Criar Conta')),
+                h('button', {
+                  type: 'button',
+                  onClick: () => { setIsLogin(!isLogin); setError(''); },
+                  className: 'w-full text-white/90 text-sm hover:text-white underline'
+                }, isLogin ? 'Não tem conta? Registre-se' : 'Já tem conta? Entrar')
+              )
+            )
+          )
+        );
+      }
+
+      // Renderizar
+      const root = createRoot(document.getElementById('root'));
+      root.render(h(LavaJatoApp));
+    });
+  </script>
+</body>
+</html>

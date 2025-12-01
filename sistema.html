@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lava Jato Control - Sistema Completo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    @keyframes float { 0%, 100% { transform: translateY(0) translateX(0); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 50% { transform: translateY(-100px) translateX(50px); } }
+    .animate-float { animation: float 15s infinite; }
+    @keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); } 20%, 40%, 60%, 80% { transform: translateX(5px); } }
+    .animate-shake { animation: shake 0.5s ease-in-out; }
+  </style>
+
+  <script>
+    const __firebase_config = JSON.stringify({
+      apiKey: "AIzaSyDuxHvdJgeJOA1ZVD955WJiBQhU0Ano46Q",
+      authDomain: "lava-jato-1e944.firebaseapp.com",
+      projectId: "lava-jato-1e944",
+      storageBucket: "lava-jato-1e944.firebasestorage.app",
+      messagingSenderId: "734467998380",
+      appId: "1:734467998380:web:a2cc700d6805af99749509"
+    });
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel" src="mai.js"></script>
+  
+  <script type="text/babel">
+    const { createRoot } = ReactDOM;
+    const root = createRoot(document.getElementById('root'));
+    root.render(<LavaJatoApp />);
+  </script>
+</body>
+</html>
