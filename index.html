@@ -92,12 +92,31 @@
         const handleAddAppointment = async (formData) => {
           if (!user) return;
           try {
-            await db.collection('appointments').add({
+            const appointmentData = {
               ...formData,
               userId: user.uid,
               createdAt: firebase.firestore.FieldValue.serverTimestamp(),
               status: 'agendado'
-            });
+            };
+
+            // Adiciona o agendamento principal
+            await db.collection('appointments').add(appointmentData);
+
+            // Se for semanal, cria os próximos 4 agendamentos automaticamente
+            if (formData.frequency === 'semanal') {
+              const baseDate = new Date(formData.date);
+              for (let week = 1; week <= 4; week++) {
+                const nextDate = new Date(baseDate);
+                nextDate.setDate(baseDate.getDate() + (week * 7));
+                
+                await db.collection('appointments').add({
+                  ...appointmentData,
+                  date: nextDate.toISOString().split('T')[0],
+                  createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+              }
+            }
+
             setShowModal(false);
             setSelectedDateForModal(null);
             setSelectedTimeForModal(null);
